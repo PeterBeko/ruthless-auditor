@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruthless Auditor</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; margin: 2em; background-color: #f9f9f9; }
+        h1, h3, h4 { color: #333; }
+        .input-group { margin-bottom: 1em; }
+        input[type="text"] { padding: 8px; width: 300px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 5px; vertical-align: middle; }
+        button:hover { background-color: #0056b3; }
+        button.secondary { background-color: #6c757d; }
+        button.secondary:hover { background-color: #5a6268; }
+        #results { margin-top: 2em; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1em; background-color: white; box-shadow: 0 2px 3px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .seo-error { color: #d9534f; font-weight: bold; }
+        .seo-ok { color: #5cb85c; }
+        #selection-area { border: 1px solid #ddd; padding: 15px; margin-top: 20px; background-color: #fff; border-radius: 4px; }
+        #url-checklist div { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Ruthless Auditor</h1>
+    <div class="input-group">
+        <input type="text" id="urlInput" placeholder="https://example.com">
+        <button onclick="auditFromSitemap()">Audit a Sitemap Alapján</button>
+        <button onclick="startCrawl()" class="secondary">Teljes Feltérképezés</button>
+    </div>
+    <div id="status"></div>
+
+    <div id="selection-area" style="display: none;">
+        <h3>Válassza ki az elemezni kívánt oldalakat:</h3>
+        <div id="url-checklist"></div>
+        <hr>
+        <h4>URL manuális hozzáadása:</h4>
+        <input type="text" id="manual-url" placeholder="https://example.com/masik-oldal">
+        <button onclick="addUrlManually()">Hozzáadás</button>
+        <hr>
+        <button onclick="runSelectedAudit()">Kiválasztott oldalak auditálása</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+        let globalResults = []; // Globális változó az eredmények tárolására
+
+        function getUrl() {
+            const url = document.getElementById('urlInput').value;
+            if (!url) {
+                alert('Kérem, adjon meg egy URL-t!');
+                return null;
+            }
+            return url;
+        }
+
+        function resetUI() {
+            document.getElementById('status').textContent = '';
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('selection-area').style.display = 'none';
+            document.getElementById('url-checklist').innerHTML = '';
+            globalResults = []; // Eredmények törlése is
+        }
+
+        async function auditFromSitemap() {
+            const url = getUrl();
+            if (!url) return;
+            resetUI();
+            document.getElementById('status').textContent = 'Sitemap keresése és feldolgozása...';
+            try {
+                const response = await fetch(`${API_URL}/audit-from-sitemap?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || `HTTP hiba! Státusz: ${response.status}`);
+                displayUrlChecklist(data.urls);
+                document.getElementById('status').textContent = `Sitemap feldolgozva. Válassza ki az oldalakat, majd indítsa az auditot.`;
+            } catch (error) {
+                document.getElementById('status').textContent = `Hiba történt: ${error.message}`;
+            }
+        }
+
+        async function startCrawl() {
+            const url = getUrl();
+            if (!url) return;
+            resetUI();
+            document.getElementById('status').textContent = 'Weboldal feltérképezése...';
+            try {
+                const response = await fetch(`${API_URL}/crawl?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || `HTTP hiba! Státusz: ${response.status}`);
+                displayUrlChecklist(data.urls);
+                document.getElementById('status').textContent = 'Válassza ki az oldalakat, majd indítsa az auditot.';
+            } catch (error) {
+                document.getElementById('status').textContent = `Hiba történt a feltérképezés során: ${error.message}`;
+            }
+        }
+
+        function displayUrlChecklist(urls) {
+            const checklistDiv = document.getElementById('url-checklist');
+            checklistDiv.innerHTML = '';
+            const infoText = document.createElement('p');
+            infoText.innerHTML = '<i>Javaslat: A könyvtár-szerű ( / végződésű) oldalakat előre bejelöltük. Kérjük, ellenőrizze a teljes listát.</i>';
+            infoText.style.fontSize = '0.9em';
+            infoText.style.color = '#555';
+            checklistDiv.appendChild(infoText);
+            urls.sort().forEach(pageUrl => {
+                const isChecked = pageUrl.endsWith('/');
+                const checkboxHtml = `<div><input type="checkbox" id="${pageUrl}" name="url-to-audit" value="${pageUrl}" ${isChecked ? 'checked' : ''}><label for="${pageUrl}">${pageUrl}</label></div>`;
+                checklistDiv.innerHTML += checkboxHtml;
+            });
+            document.getElementById('selection-area').style.display = 'block';
+        }
+
+        function addUrlManually() {
+            const manualUrlInput = document.getElementById('manual-url');
+            const newUrl = manualUrlInput.value.trim();
+            if (!newUrl) return;
+            const checklistDiv = document.getElementById('url-checklist');
+            const checkboxHtml = `<div><input type="checkbox" id="${newUrl}" name="url-to-audit" value="${newUrl}" checked><label for="${newUrl}">${newUrl}</label></div>`;
+            checklistDiv.innerHTML += checkboxHtml;
+            manualUrlInput.value = '';
+        }
+
+        async function runSelectedAudit() {
+            const selectedCheckboxes = document.querySelectorAll('input[name="url-to-audit"]:checked');
+            const urlsToAudit = Array.from(selectedCheckboxes).map(cb => cb.value);
+            if (urlsToAudit.length === 0) {
+                alert('Nincs kiválasztott oldal az auditáláshoz!');
+                return;
+            }
+            document.getElementById('status').textContent = `Audit futtatása ${urlsToAudit.length} oldalon...`;
+            try {
+                const response = await fetch(`${API_URL}/run-audit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: urlsToAudit }),
+                });
+                if (!response.ok) throw new Error(`HTTP hiba! Státusz: ${response.status}`);
+                const data = await response.json();
+                globalResults = data.results; // Eredmények mentése a globális változóba
+                document.getElementById('status').textContent = `Audit befejezve. ${data.pages_audited} oldal elemezve.`;
+                displayResults(globalResults);
+            } catch (error) {
+                document.getElementById('status').textContent = `Hiba történt az audit során: ${error.message}`;
+            }
+        }
+
+        function displayResults(results) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+            
+            // ÚJ: CSV letöltő gomb hozzáadása
+            const downloadButton = document.createElement('button');
+            downloadButton.textContent = 'Eredmények letöltése (CSV)';
+            downloadButton.onclick = downloadCSV;
+            resultsDiv.appendChild(downloadButton);
+
+            const table = document.createElement('table');
+            table.innerHTML = `<tr><th>URL</th><th>Státusz</th><th>Title</th><th>Meta Description</th><th>H1 Szöveg</th><th>H1 Szám</th><th>Szavak</th><th>Képek (hiányzó alt)</th></tr>`;
+
+            results.forEach(page => {
+                const row = table.insertRow();
+                if (page.error) {
+                    row.innerHTML = `<td colspan="8">Hiba az URL elemzése közben: ${page.url} - ${page.error}</td>`;
+                    row.style.backgroundColor = '#f2dede';
+                    return;
+                }
+                const h1CountCell = page.h1_count === 1 ? `<span class="seo-ok">${page.h1_count}</span>` : `<span class="seo-error">${page.h1_count}</span>`;
+                
+                // JAVÍTÁS: Aposztróf hozzáadása a megjelenített adathoz is
+                const altTextValue = `'${page.images_missing_alt} / ${page.image_count}`;
+                const altTextCell = page.images_missing_alt === 0 ? `<span class="seo-ok">${altTextValue}</span>` : `<span class="seo-error">${altTextValue}</span>`;
+                
+                row.innerHTML = `<td><a href="${page.url}" target="_blank">${page.url}</a></td><td>${page.status_code}</td><td>${page.title || '<i>Hiányzik</i>'}</td><td>${page.meta_description || '<i>Hiányzik</i>'}</td><td>${page.h1_text || '<i>Hiányzik</i>'}</td><td>${h1CountCell}</td><td>${page.word_count}</td><td>${altTextCell}</td>`;
+            });
+            resultsDiv.appendChild(table);
+        }
+
+        // ÚJ: CSV letöltő funkció
+        function downloadCSV() {
+            if (globalResults.length === 0) {
+                alert("Nincs letölthető eredmény.");
+                return;
+            }
+
+            const headers = ["URL", "Státusz", "Title", "Meta Description", "H1 Szöveg", "H1 Szám", "Szavak", "Képek (hiányzó alt / összes)"];
+            let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
+
+            globalResults.forEach(result => {
+                let row;
+                if (result.error) {
+                    row = [result.url, `Hiba: ${result.error}`.replace(/,/g, ';')];
+                } else {
+                    row = [
+                        result.url,
+                        result.status_code,
+                        `"${(result.title || '').replace(/"/g, '""')}"`,
+                        `"${(result.meta_description || '').replace(/"/g, '""')}"`,
+                        `"${(result.h1_text || '').replace(/"/g, '""')}"`,
+                        result.h1_count,
+                        result.word_count,
+                        // JAVÍTÁS: Aposztróf hozzáadása a CSV adathoz is
+                        `'${result.images_missing_alt} / ${result.image_count}`
+                    ];
+                }
+                csvContent += row.join(",") + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "ruthless_auditor_results.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>

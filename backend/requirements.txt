@@ -1,0 +1,15 @@
+# Web Framework and Server
+# A backend API végpontok biztosításához és a szerver futtatásához.
+fastapi
+uvicorn[standard]
+
+# HTTP Requests and HTML/XML Parsing
+# A weboldalak letöltéséhez (CRAWL_SITE) és a HTML tartalom elemzéséhez (FETCH_AND_PARSE).
+requests
+beautifulsoup4
+lxml
+
+# LLM API Integration
+# A digest elküldéséhez és a riport fogadásához (CALL_LLM_RUTHLESS).
+google-generativeai
+# openai # Alternatíva, ha a későbbiekben OpenAI modelleket használnál.
